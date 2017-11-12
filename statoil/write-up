@@ -1,0 +1,10 @@
+initial cnn tests with just one bacnd gave poor results. 0.5305, which is as good as guessing. 
+
+Next step is to combine the two bands and make each one a channel in an image
+This still resulted in poor results of 0.5305 accuracy. I can try adding the incidence angle in but at the moment the model is'nt performing well enough. 
+
+Next step is to setup some kind of gridsearch to try changing all the parameters. 
+
+
+
+If i need to do more then i need to try injecting the incidence angle into the fully connected layer. 
