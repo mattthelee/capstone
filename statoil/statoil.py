@@ -18,6 +18,7 @@ from keras.layers import Conv2D, MaxPooling2D, GlobalAveragePooling2D
 from keras.layers import Dropout, Flatten, Dense, Input
 from keras.models import Sequential
 from keras.preprocessing.image import ImageDataGenerator
+from sklearn import model_selection
 import png
 
 
@@ -36,7 +37,7 @@ def convertBands(band1,band2):
     band1_array = np.array(band1)
     band1_array.shape = (75,75)
     
-    band2_array = np.array(band1)
+    band2_array = np.array(band2)
     band2_array.shape = (75,75)
     return np.asarray([band1_array,band2_array])
 
@@ -77,14 +78,48 @@ def showArrayImage(array):
     arrayImage = Image.fromarray(new_array)
     return arrayImage.show()
     
-training_frame = loadData("data/processed/train.json")
-testing_frame = loadData("data/processed/test.json")
+
+def theirconvert(training_frame):
+    X_band_1=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_1"]])
+    X_band_2=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_2"]])
+    X_band_3=(X_band_1+X_band_2)/2
+    X_train = np.concatenate([X_band_1[:, :, :, np.newaxis]
+                          , X_band_2[:, :, :, np.newaxis]
+                         , X_band_3[:, :, :, np.newaxis]], axis=-1)
+    return X_train
+
+def createband3(band1,band2,angle):
+    band3 = (band1 + band2)/2
+    return band3
+
+def frameToImagesTensor(training_frame):
+    X_band_1=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_1"]])
+    X_band_2=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_2"]])
+    X_band_3=(X_band_1+X_band_2)/2
+    #X_band_3 = map(lambda band1, band2: createband3(band1,band2), X_band_1,X_band_2)
+    X_train = np.concatenate([X_band_1[:, :, :, np.newaxis]
+                          , X_band_2[:, :, :, np.newaxis]
+                         , X_band_3[:, :, :, np.newaxis]], axis=-1)
+    return X_train
+
+training_frame = pd.read_json("/home/leem/learning/capstone/statoil/data/processed/train.json")
+testing_frame = pd.read_json("/home/leem/learning/capstone/statoil/data/processed/test.json")
+y_train = training_frame['is_iceberg']
+
+avg_angle = np.mean(filter(lambda x: x != 'na' ,training_frame['inc_angle']))
+
+# Replace the na's with the average angle
+training_frame['inc_angle'] = training_frame['inc_angle'].replace('na',avg_angle)
+
 # have to convert y_train to a numpy array as dataframe has a keras bug
-y_train = np.asarray(pd.get_dummies(training_frame['is_iceberg']))
-#TODO need to add channel into the band_1_arrays array
-band_1_arrays = np.asarray(map(lambda v : convertBand(v), training_frame['band_1']))
-band_2_arrays = np.asarray(map(lambda v : convertBand(v), training_frame['band_2']))
-channelled_bands = convertToTensor(training_frame)
+#y_train = np.asarray(pd.get_dummies(training_frame['is_iceberg']))
+
+# Converting angle to a sin as the 
+angle_factor = [ np.sin(angle*np.pi/180.0) for angle in training_frame['inc_angle']]
+
+#band_1_arrays = np.asarray(map(lambda v : convertBand(v), training_frame['band_1']))
+#band_2_arrays = np.asarray(map(lambda v : convertBand(v), training_frame['band_2']))
+#channelled_bands = convertToTensor(training_frame,angle_factor)
 
 # TODO experiment without horizontal, vertical and rotations
 # Sun direction might affect the light see so might not want to lose that information
@@ -94,6 +129,42 @@ gen = ImageDataGenerator(horizontal_flip = True,
                          rotation_range = 360)
 # Als0 need to check that having it as a channel isn't just something done for different colours as the polarization is a bit different
 
+x_train = frameToImagesTensor(training_frame)
+x_test = frameToImagesTensor(testing_frame)
+
+training_flow = gen.flow(x_train)
+testing_flow = gen.flow(x_test)
+
+my_model = createModel()
+my_model.fit_generator(training_flow,steps_per_epoch=24,epochs= 150)
+
+#Cross validation. Stratified cross validation is done to ensure samples are representative
+k = 3
+folds = model_selection.StratifiedKFold(n_splits=k, shuffle=True).split(x_train,y_train)
+
+folds_array = []
+
+for i in range(k):
+    fold = folds.next()
+    cv_training_indexes = fold[0]
+    cv_testing_indexes = fold[1]
+    
+    cv_x_training_samples = [x_train[index] for index in cv_training_indexes]
+    cv_y_training_samples = [y_train[index] for index in cv_training_indexes]
+    
+    cv_x_testing_samples = [x_train[index] for index in cv_testing_indexes]
+    cv_y_testing_samples = [y_train[index] for index in cv_testing_indexes]
+    
+    cv_train_angle_factor = [angle_factor[index] for index in cv_training_indexes]
+    cv_test_angle_factor = [angle_factor[index] for index in cv_testing_indexes]
+
+    #create the flows
+    # create callback to save model progress
+    # fit the model
+    # load the best weights of the model from the callback
+    # evaluate the model, check its accuracy etc
+    
+    
 
 #immediate steps for kernal based stuff
 # Need to remind myself what form the data is in when i pass it to the model
