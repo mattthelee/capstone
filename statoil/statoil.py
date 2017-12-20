@@ -102,6 +102,24 @@ def frameToImagesTensor(training_frame):
                          , X_band_3[:, :, :, np.newaxis]], axis=-1)
     return X_train
 
+def gen_flow_for_two_inputs(x,angle_factor,y, batch_size):
+    # This function is used because the NN will only take a generator as an input
+    # because we are using an genrerator to alter the main images
+    # therefore the angle_factor needs to be passed in the same way a generator would
+    # to do this we create two generators and take the output of the angle genrator as the second input
+    gen = ImageDataGenerator(horizontal_flip = True,
+                         vertical_flip = True,
+                         zoom_range = 0.2,
+                         rotation_range = 360)
+    gen_x = gen.flow(x,y,batch_size=batch_size,seed=0)
+    gen_angle =  gen.flow(x,angle_factor,batch_size=batch_size, seed=0)
+    
+    return gen_x
+
+gen = ImageDataGenerator(horizontal_flip = True,
+                         vertical_flip = True,
+                         zoom_range = 0.2,
+                         rotation_range = 360)
 training_frame = pd.read_json("/home/leem/learning/capstone/statoil/data/processed/train.json")
 testing_frame = pd.read_json("/home/leem/learning/capstone/statoil/data/processed/test.json")
 y_train = training_frame['is_iceberg']
@@ -123,10 +141,7 @@ angle_factor = [ np.sin(angle*np.pi/180.0) for angle in training_frame['inc_angl
 
 # TODO experiment without horizontal, vertical and rotations
 # Sun direction might affect the light see so might not want to lose that information
-gen = ImageDataGenerator(horizontal_flip = True,
-                         vertical_flip = True,
-                         zoom_range = 0.2,
-                         rotation_range = 360)
+
 # Als0 need to check that having it as a channel isn't just something done for different colours as the polarization is a bit different
 
 x_train = frameToImagesTensor(training_frame)
