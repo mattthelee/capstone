@@ -1,0 +1,73 @@
+\documentclass{article}
+%\usepackage[pdftex]{graphicx}
+\usepackage{hyperref}
+\usepackage{cite}
+%\addbibresource{proposal.bib}
+
+\begin{document}
+
+\title{Iceberg Detection using Sentinel-1 Satellite Images}
+\author{Matthew Lee}
+\date{\today}
+\maketitle{}
+\newpage{}
+
+\section{Domain Background}
+This project is based on the Statoil/C-CORE Iceberg Classifier Challenge, posed on kaggle.com. The challenge aims to improve the detection of icebergs using satellite imagery. Icebergs present a significant danger to shipping, especially in adverse weather conditions. To mitigate risks caused by icebergs, many operators use shore based techniques and aerial reconnaissance. However, in remote locations or during harsh weather conditions, other approaches must be used. This is where satellite imagery can help. The Sentinel-1 satellites use imaging techniques that are able to penetrate through clouds and can operate at night as they are their own lightsource. However telling ships apart from Icebergs is difficult as the images do not have colour and are have a low resolution of  of the images produced. 
+
+The radar takes two images, with different polarisations,  Horizontal-Horizontal(HH) and Horizontal-Vertical(HV). HH means the image was formed by transmitting light with a horizontal polarization and receives light with a horizontal polarisation. HV means transmitting with horizontal polarisation and receiving on vertical polarisation. The polarisation of light backscattered to the satellite depends on the material, polarisation of transmitted light and the angle of the reflecting surface. This means that by using both polarisations makes classification of ice vs water easier. \cite{radarsat-mode-selection,yu}. 
+
+I was interested in this project because of my previous experience with polarisation and satellite imagery from my Physics degree. I'm really interested in the application of satellites and am quite suprised that satellite image classification is not already more widely used, given the considerable investment involved to transport it into space and our inability to upgrade existing satellite hardware. This means that work to upgrade the software, to extract more value from these satellites is especially important.  
+
+
+
+\section{Problem Statement}
+The problem to be solved is one of binary image classification. Does a given sentinnel-1 image contain an iceberg? The model that solves this problem must have a high accuracy in order to be trusted to handle the important task of guiding ships. The metric used for this is discussed in the Evaluation Metrics section. The problem is repeatable because there is constant shipping across the atlantic, with over 10 billion tonnes being shipped globally each year. \cite{unctad}
+
+
+\section{Datasets and Inputs}
+The dataset is provided in a JSON list with the following fields for each entry in the list:
+\begin{itemize}
+\item ID: The ID of the image
+\item band\_1: The flattened image data in a list. Images are 75x75 so the flattened list has 5625 elements. band\_1 is for the HH polarisation.
+\item band\_2: The same as band\_1 except this image is of the HV polarisation.
+\item inc\_angle: The incidence angle that the satellite was at when the images were taken. 133 of the images have NA for incidence angle so some preprocessing may be needed.
+\item is\_iceberg: This field only exists for the training set and indicates whether the object is an iceberg.
+\ldots
+\end{itemize}
+There are 1604 samples in the training set and 8424 in the test set. The test set includes some machine generated images to prevent hand scoring. 
+
+Each band provides an image of the object, interpretation of this data will form the main process of the classification model. It has been found that for the purposes of ice identification, using a single band rather than interpretting both, results in much poorer results \cite{radarsat-mode-selection,yu}. Therefore it is likely that the strongest models will use both bands for classification.
+
+The incidence angle describes the position of the satellite when the image was taken. The angle is defined as the angle between the the position of the satellite and the vector perpendicular to the receiving surface. i.e. if the incidence angle is $0^0$ then the satellite is directly overhead. The angle affects the backscattering behaviour of the target. The change in backscattering as angle changes is different on the different polarisations, therefore it is essential that the model takes this into account when interpretting the bands. For example: Larger incidence angles reduce backscattering from the ocean clutter and have increased the probability of iceberg detection for previous models \cite{radarsat-mode-selection}
+
+
+\section{Solution Statement}
+I intend to use a convolutional neural network to solve this problem. As i do not have access to vast computing resources, will use pretrained models to resolve this. I will compare the performance of the VGG16, ResNet50 and Inception-ResNet V2 models. After measuring their initial performance I will commit to one model and tune it to improve performance. 
+
+In additional to the pre-train convolutions, I will need to pass the incidence angle to the fulyl connected layers. As the relationship between backscattering and incidence angle is trigonometric, I will take the sine of the angle. 
+
+In order to provide sufficient training time and computing resource, I will run the model on an AWS EC2 server. 
+
+\section{Benchmark model}
+The closest benchmark available are the results of the German Aerospace Center \cite{bentes} who performed ship-oceberg discrimination using high resolution images from the TerraSAR-X satellite. This achieved Recall of 100\% of icebergs with an F1-score of 98\%. However this was using high resolution images on a different satellite so is not an exact equivalent. The lower resolution of the sentinnel-1 images means we can expect this project to poorer results than the benchmark. 
+
+\section{Evaluation Metrics}
+The Kaggle competition measures the performance of a given model in achieving this based off of its log loss. As there are only two classifications for an image; has an iceberg or does not have an iceberg, the classification is binary and the log loss equation is simple. The log loss equation for calculation 
+INSERT REFERENCE FOR EQUATION EVEN THOUGH I SIMPLIFIED IT
+\[ logloss = - \frac{1}{N} \sum_{i=1}^{N} y_{i1}\ln(p_{i1}) + y_{i2}\ln(p_{i2}) \]
+
+Where N is the number of images classified, $y_{i1}$ is 1 if image has an iceberg and 0 otherwise, $y_{i2}$ is 0 if image has an iceberg and 1 otherwise, $p_{i1}$ is the predicted probability of image i having an iceberg, $p_{i2}$ is the predicted probability  of image i not containing an iceberg. 
+
+This equation sums the natural logarithms of the incorrect predictions and divides by the total number of predictions. This means that the log loss is reduced by improving accuracy. This is interesting as I would have expected the competition to have valued recall most, as a ship wrongly classified as an iceberg poses no danger to another ship, where as an iceberg wrongly classified as a ship could be extremely dangerous. For the purposes of this project I will use Kaggle's logloss equation as the main metric, however I will still measure recall as it will be an important metric in real world scenarios. 
+
+\section{Project Design}
+
+
+
+Your text goes here…
+
+% Uncomment the following two lines if you want to have a bibliography
+\bibliographystyle{abbrv}
+\bibliography{proposal}{}
+\end{document}
