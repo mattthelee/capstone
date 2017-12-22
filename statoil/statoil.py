@@ -19,7 +19,7 @@ from keras.layers import Dropout, Flatten, Dense, Input
 from keras.models import Sequential
 from keras.preprocessing.image import ImageDataGenerator
 from sklearn import model_selection
-import png
+#import png
 
 
 def loadData(filepath):
@@ -120,8 +120,8 @@ gen = ImageDataGenerator(horizontal_flip = True,
                          vertical_flip = True,
                          zoom_range = 0.2,
                          rotation_range = 360)
-training_frame = pd.read_json("/home/leem/learning/capstone/statoil/data/processed/train.json")
-testing_frame = pd.read_json("/home/leem/learning/capstone/statoil/data/processed/test.json")
+training_frame = pd.read_json("processed/train.json")
+testing_frame = pd.read_json("processed/test.json")
 y_train = training_frame['is_iceberg']
 
 avg_angle = np.mean(filter(lambda x: x != 'na' ,training_frame['inc_angle']))
