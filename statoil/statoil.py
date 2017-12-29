@@ -18,6 +18,7 @@ from keras.layers import Conv2D, MaxPooling2D, GlobalAveragePooling2D
 from keras.layers import Dropout, Flatten, Dense, Input
 from keras.models import Sequential
 from keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import ModelCheckpoint
 from sklearn import model_selection
 #import png
 
@@ -113,15 +114,16 @@ def gen_flow_for_two_inputs(x,angle_factor,y, batch_size):
                          rotation_range = 360)
     gen_x = gen.flow(x,y,batch_size=batch_size,seed=0)
     gen_angle =  gen.flow(x,angle_factor,batch_size=batch_size, seed=0)
-    
-    return gen_x
+    #TODO see if i can improve on the example also need to reference this function
+    while True:
+        x1i = gen_x.next()
+        x2i = gen_angle.next()
+        yield [x1i[0], x2i[1], x1i[1]]
 
-gen = ImageDataGenerator(horizontal_flip = True,
-                         vertical_flip = True,
-                         zoom_range = 0.2,
-                         rotation_range = 360)
-training_frame = pd.read_json("processed/train.json")
-testing_frame = pd.read_json("processed/test.json")
+
+
+training_frame = pd.read_json("data/processed/train.json")
+testing_frame = pd.read_json("data/processed/test.json")
 y_train = training_frame['is_iceberg']
 
 avg_angle = np.mean(filter(lambda x: x != 'na' ,training_frame['inc_angle']))
@@ -146,19 +148,27 @@ angle_factor = [ np.sin(angle*np.pi/180.0) for angle in training_frame['inc_angl
 
 x_train = frameToImagesTensor(training_frame)
 x_test = frameToImagesTensor(testing_frame)
+'''
+gen = ImageDataGenerator(horizontal_flip = True,
+                         vertical_flip = True,
+                         zoom_range = 0.2,
+                         rotation_range = 360)
 
 training_flow = gen.flow(x_train)
 testing_flow = gen.flow(x_test)
 
 my_model = createModel()
 my_model.fit_generator(training_flow,steps_per_epoch=24,epochs= 150)
-
+'''
+best_model_filepath = "models/bestmodel.hdf5"
+checkpointer = ModelCheckpoint(best_model_filepath,verbose=1, save_best_only= True)
 #Cross validation. Stratified cross validation is done to ensure samples are representative
 k = 3
 folds = model_selection.StratifiedKFold(n_splits=k, shuffle=True).split(x_train,y_train)
 
 folds_array = []
-
+batch_size = 32
+epoch_num = 150
 for i in range(k):
     fold = folds.next()
     cv_training_indexes = fold[0]
@@ -173,12 +183,22 @@ for i in range(k):
     cv_train_angle_factor = [angle_factor[index] for index in cv_training_indexes]
     cv_test_angle_factor = [angle_factor[index] for index in cv_testing_indexes]
 
-    #create the flows
-    # create callback to save model progress
-    # fit the model
-    # load the best weights of the model from the callback
-    # evaluate the model, check its accuracy etc
-    
+    cv_gen_train_flow = gen_flow_for_two_inputs(cv_x_training_samples,cv_train_angle_factor,cv_y_training_samples,batch_size)
+    model = createModel()
+    model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer], validation_data = ([cv_x_testing_samples,cv_test_angle_factor], cv_y_testing_samples),verbose =1)
+   
+
+model = createModel()
+model.load_weights(best_model_filepath)
+print "training score"
+gen_train_flow = gen_flow_for_two_inputs(x_train,angle_factor,y_train,batch_size)
+
+train_result = model.evaluate_generator(gen_train_flow)
+print train_result
+
+# immediate steps
+ # evaluate the model, check its accuracy etc
+ # evaulate for the test data
     
 
 #immediate steps for kernal based stuff
