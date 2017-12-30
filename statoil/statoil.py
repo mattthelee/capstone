@@ -16,6 +16,7 @@ import keras
 import numpy as np
 from keras.layers import Conv2D, MaxPooling2D, GlobalAveragePooling2D, GlobalMaxPooling2D
 from keras.layers import Dropout, Flatten, Dense, Input
+from keras.layers.merge import Concatenate
 from keras.models import Sequential
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ModelCheckpoint
