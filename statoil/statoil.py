@@ -16,8 +16,8 @@ import keras
 import numpy as np
 from keras.layers import Conv2D, MaxPooling2D, GlobalAveragePooling2D, GlobalMaxPooling2D
 from keras.layers import Dropout, Flatten, Dense, Input
-from keras.layers.merge import Concatenate
-from keras.models import Sequential
+from keras.layers.merge import concatenate
+from keras.models import Sequential, Model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ModelCheckpoint
 from keras.applications.vgg16 import VGG16
@@ -63,13 +63,14 @@ def createCombinedModel():
     # Get the output of the last layer of transfer model. Will need to change this for each transfer model
     transfer_output = transfer_model.get_layer('block5_pool').output
     transfer_output = GlobalMaxPooling2D()(transfer_output)
+    #TODO fix issue where this gives something different to angle_layer and transfer_ouput, should be a tensor
     combined_inputs = concatenate([transfer_output, angle_layer])
     
-    combined_model = Dense(32, activation='relu', name="FirstFCDense)(combined_inputs)
+    combined_model = Dense(32, activation='relu', name="FirstFCDense")(combined_inputs)
     predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
     
-    model = Model(input=[combined_model.input, angle_input], output =predictions)
-    model.compile(loss='binary_crossentropy',metrics=['accuracy'])
+    model = Model(input=[transfer_model.input, angle_input], output =predictions)
+    model.compile(optimizer='rmsprop',loss='binary_crossentropy',metrics=['accuracy'])
     return model
     
 def createModel():
@@ -272,3 +273,4 @@ print train_result
 
 #Pond, S., and Pickard, G.L. (1983). Introductory Dynamical Oceanography, 2 nd Edition.
 #Pergamon Press, Toronto.
+
