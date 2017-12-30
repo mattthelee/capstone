@@ -63,10 +63,10 @@ def createCombinedModel():
     # Get the output of the last layer of transfer model. Will need to change this for each transfer model
     transfer_output = transfer_model.get_layer('block5_pool').output
     transfer_output = GlobalMaxPooling2D()(transfer_output)
-    combined_inputs = Concatenate([transfer_output, angle_layer])
+    combined_inputs = concatenate([transfer_output, angle_layer])
     
-    combined_model = Dense(32, activation='relu')(combined_inputs)
-    predictions = Dense(1, activation='sigmoid')(combined_model)
+    combined_model = Dense(32, activation='relu', name="FirstFCDense)(combined_inputs)
+    predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
     
     model = Model(input=[combined_model.input, angle_input], output =predictions)
     model.compile(loss='binary_crossentropy',metrics=['accuracy'])
