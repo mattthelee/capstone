@@ -52,6 +52,24 @@ def createVGGModel():
     
     transferred_model = VGG16(weights='imagenet')
 
+def createCombinedModel():
+    angle_input = Input(shape=[1], name="angle_input")
+    angle_layer = Dense(1,)(angle_input)
+    
+    # Use a transfer model for the initial layers
+    transfer_model = VGG16(weights='imagenet', include_top=False, input_shape=x_train.shape[1:])
+    # Get the output of the last layer of transfer model. Will need to change this for each transfer model
+    transfer_output = transfer_model.get_layer('block5_pool').output
+    transfer_output = GlobalMaxPooling2D()(transfer_output)
+    combined_inputs = Concatenate([transfer_output, angle_layer])
+    
+    combined_model = Dense(32, activation='relu')(combined_inputs)
+    predictions = Dense(1, activation='sigmoid')(combined_model)
+    
+    model = Model(input=[combined_model.input, angle_input], output =predictions)
+    model.compile(loss='binary_crossentropy',metrics=['accuracy'])
+    return model
+    
 def createModel():
     
     cnnModel = Sequential()
@@ -184,11 +202,11 @@ for i in range(k):
     cv_test_angle_factor = [angle_factor[index] for index in cv_testing_indexes]
 
     cv_gen_train_flow = gen_flow_for_two_inputs(cv_x_training_samples,cv_train_angle_factor,cv_y_training_samples,batch_size)
-    model = createModel()
+    model = createCombinedModel()
     model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer], validation_data = ([cv_x_testing_samples,cv_test_angle_factor], cv_y_testing_samples),verbose =1)
    
 
-model = createModel()
+model = createCombinedModel()
 model.load_weights(best_model_filepath)
 print "training score"
 gen_train_flow = gen_flow_for_two_inputs(x_train,angle_factor,y_train,batch_size)
@@ -197,6 +215,7 @@ train_result = model.evaluate_generator(gen_train_flow)
 print train_result
 
 # immediate steps
+ # Create model with inputs for images and for angle. 
  # evaluate the model, check its accuracy etc
  # evaulate for the test data
     
