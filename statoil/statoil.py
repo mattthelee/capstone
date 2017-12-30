@@ -19,6 +19,7 @@ from keras.layers import Dropout, Flatten, Dense, Input
 from keras.models import Sequential
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ModelCheckpoint
+from keras.applications.vgg16 import VGG16
 from sklearn import model_selection
 #import png
 
