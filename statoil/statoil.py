@@ -16,8 +16,8 @@ import keras
 import numpy as np
 from keras.layers import Conv2D, MaxPooling2D, GlobalAveragePooling2D, GlobalMaxPooling2D
 from keras.layers import Dropout, Flatten, Dense, Input
-from keras.layers.merge import Concatenate
-from keras.models import Sequential
+from keras.layers.merge import concatenate
+from keras.models import Sequential, Model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ModelCheckpoint
 from keras.applications.vgg16 import VGG16
@@ -54,6 +54,7 @@ def createVGGModel():
     
     transferred_model = VGG16(weights='imagenet')
 
+
 def createCombinedModel():
     angle_input = Input(shape=[1], name="angle_input")
     angle_layer = Dense(1,)(angle_input)
@@ -63,13 +64,14 @@ def createCombinedModel():
     # Get the output of the last layer of transfer model. Will need to change this for each transfer model
     transfer_output = transfer_model.get_layer('block5_pool').output
     transfer_output = GlobalMaxPooling2D()(transfer_output)
+    #TODO fix issue where this gives something different to angle_layer and transfer_ouput, should be a tensor
     combined_inputs = concatenate([transfer_output, angle_layer])
     
-    combined_model = Dense(32, activation='relu', name="FirstFCDense)(combined_inputs)
+    combined_model = Dense(32, activation='relu', name="FirstFCDense")(combined_inputs)
     predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
     
-    model = Model(input=[combined_model.input, angle_input], output =predictions)
-    model.compile(loss='binary_crossentropy',metrics=['accuracy'])
+    model = Model(input=[transfer_model.input, angle_input], output =predictions)
+    model.compile(optimizer='rmsprop',loss='binary_crossentropy',metrics=['accuracy'])
     return model
     
 def createModel():
@@ -138,7 +140,7 @@ def gen_flow_for_two_inputs(x,angle_factor,y, batch_size):
     while True:
         x1i = gen_x.next()
         x2i = gen_angle.next()
-        yield [x1i[0], x2i[1], x1i[1]]
+        yield [x1i[0], x2i[1]], x1i[1]
 
 
 
@@ -180,6 +182,7 @@ testing_flow = gen.flow(x_test)
 my_model = createModel()
 my_model.fit_generator(training_flow,steps_per_epoch=24,epochs= 150)
 '''
+#setup constants
 best_model_filepath = "models/bestmodel.hdf5"
 checkpointer = ModelCheckpoint(best_model_filepath,verbose=1, save_best_only= True)
 #Cross validation. Stratified cross validation is done to ensure samples are representative
@@ -193,20 +196,21 @@ for i in range(k):
     fold = folds.next()
     cv_training_indexes = fold[0]
     cv_testing_indexes = fold[1]
+   
+    cv_x_training_samples = np.array([x_train[index] for index in cv_training_indexes])
+    cv_y_training_samples = np.array([y_train[index] for index in cv_training_indexes])
+   
+    cv_x_testing_samples = np.array([x_train[index] for index in cv_testing_indexes])
+    cv_y_testing_samples = np.array([y_train[index] for index in cv_testing_indexes])
+   
+    cv_train_angle_factor = np.array([angle_factor[index] for index in cv_training_indexes])
+    cv_test_angle_factor = np.array([angle_factor[index] for index in cv_testing_indexes])
     
-    cv_x_training_samples = [x_train[index] for index in cv_training_indexes]
-    cv_y_training_samples = [y_train[index] for index in cv_training_indexes]
-    
-    cv_x_testing_samples = [x_train[index] for index in cv_testing_indexes]
-    cv_y_testing_samples = [y_train[index] for index in cv_testing_indexes]
-    
-    cv_train_angle_factor = [angle_factor[index] for index in cv_training_indexes]
-    cv_test_angle_factor = [angle_factor[index] for index in cv_testing_indexes]
-
+    cv_gen_test_flow = gen_flow_for_two_inputs(cv_x_testing_samples,cv_test_angle_factor,cv_y_testing_samples,batch_size)
     cv_gen_train_flow = gen_flow_for_two_inputs(cv_x_training_samples,cv_train_angle_factor,cv_y_training_samples,batch_size)
     model = createCombinedModel()
-    model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer], validation_data = ([cv_x_testing_samples,cv_test_angle_factor], cv_y_testing_samples),verbose =1)
-   
+    model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer], validation_data = cv_gen_test_flow,validation_steps=len(cv_test_angle_factor), verbose =1)
+
 
 model = createCombinedModel()
 model.load_weights(best_model_filepath)
