@@ -67,7 +67,10 @@ def createCombinedModel():
     #TODO fix issue where this gives something different to angle_layer and transfer_ouput, should be a tensor
     combined_inputs = concatenate([transfer_output, angle_layer])
     
-    combined_model = Dense(32, activation='relu', name="FirstFCDense")(combined_inputs)
+    combined_model = Dense(512, activation='relu', name="FirstFCDense")(combined_inputs)
+    combined_model = Dropout(0.3)(combined_model)
+    combined_model = Dense(512, activation='relu', name="SecondFCDense")(combined_model)
+    combined_model = Dropout(0.3)(combined_model)
     predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
     
     model = Model(input=[transfer_model.input, angle_input], output =predictions)
