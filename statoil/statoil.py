@@ -22,6 +22,9 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ModelCheckpoint
 from keras.applications.vgg16 import VGG16
 from sklearn import model_selection
+from sklearn.preprocessing import normalize
+from PIL import Image
+
 #import png
 
 
@@ -99,11 +102,27 @@ def runModel(channelled_bands, y_train):
 
 def showArrayImage(array):
     flat_array = array.flatten()
-    new_array = np.asarray(map(lambda v: int(v + 40), flat_array))
+    new_array = np.asarray(map(lambda v: int(v - min(flat_array)), flat_array))
+    new_array = np.asarray(map(lambda v: 255*v/new_array.max(), new_array))
+
     new_array.shape = (75,75)
-    arrayImage = Image.fromarray(new_array)
-    return arrayImage.show()
-    
+    arrayImage = Image.fromarray(new_array, mode='L')
+    arrayImage.show()
+    arrayImage.save('my_not_iceberg_band_2.png')
+    return
+
+def showListImage(theList):
+    image_array = np.asarray([255*(len(theList)-i[0])/len(theList) for i in sorted(enumerate(theList), key=lambda x:x[1], reverse=True)])
+    pos_array = np.asarray(map(lambda v: int(v - minimum ), theList))
+    minimum = min(theList)
+    pos_array = np.asarray(map(lambda v: int(v - minimum ), theList))
+    maximum = max(pos_array)
+    image_array = np.asarray(map(lambda v: int(255*v/maximum ), pos_array))
+
+    image_array.shape = (75,75)
+    listImage = Image.fromarray(image_array, mode='L')
+    listImage.show()    
+    return
 
 def theirconvert(training_frame):
     X_band_1=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_1"]])
@@ -188,6 +207,8 @@ my_model.fit_generator(training_flow,steps_per_epoch=24,epochs= 150)
 #setup constants
 best_model_filepath = "models/bestmodel.hdf5"
 checkpointer = ModelCheckpoint(best_model_filepath,verbose=1, save_best_only= True)
+es = EarlyStopping('val_loss', patience=10, mode="min")
+
 #Cross validation. Stratified cross validation is done to ensure samples are representative
 k = 3
 folds = model_selection.StratifiedKFold(n_splits=k, shuffle=True).split(x_train,y_train)
@@ -212,7 +233,7 @@ for i in range(k):
     cv_gen_test_flow = gen_flow_for_two_inputs(cv_x_testing_samples,cv_test_angle_factor,cv_y_testing_samples,batch_size)
     cv_gen_train_flow = gen_flow_for_two_inputs(cv_x_training_samples,cv_train_angle_factor,cv_y_training_samples,batch_size)
     model = createCombinedModel()
-    model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer], validation_data = cv_gen_test_flow,validation_steps=len(cv_test_angle_factor), verbose =1)
+    model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer,es], validation_data = cv_gen_test_flow,validation_steps=len(cv_test_angle_factor), verbose =1)
 
 
 model = createCombinedModel()
@@ -223,10 +244,9 @@ gen_train_flow = gen_flow_for_two_inputs(x_train,angle_factor,y_train,batch_size
 train_result = model.evaluate_generator(gen_train_flow)
 print train_result
 
-# immediate steps
- # Create model with inputs for images and for angle. 
- # evaluate the model, check its accuracy etc
- # evaulate for the test data
+#immediate steps
+# try different optimiser, e.g. adam optimiser
+# try tensorflow gpu instead (may need to buy ram for personal laptop)
     
 
 #immediate steps for kernal based stuff

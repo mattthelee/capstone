@@ -1,0 +1,233 @@
+\documentclass{article}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{listings}
+\usepackage{graphicx}
+\graphicspath{ {latex_images/} }
+
+\begin{document}
+
+\title{Iceberg Detection using Sentinel-1 Satellite Images}
+\author{Matthew Lee}
+\date{\today}
+\maketitle{}
+\newpage{}
+\section{I. Definition}
+\paragraph{•}
+1-2 pages
+
+
+\subsection{Project Overview}
+Icebergs present a significant danger to shipping, especially in adverse weather conditions. Identifying Icebergs and distinguishing them from ships is therefore vital for safe sea transport. This project aims to improve the detection of icebergs using satellite imagery. This project is based on the Statoil/C-CORE Iceberg Classifier Challenge, posed on kaggle.com \cite{kaggle}. To mitigate risks caused by icebergs, many operators use shore based techniques and aerial reconnaissance. However, in remote locations or during harsh weather conditions the icebergs may not be visible for aerial reconnaissance or there may not be an airfield nearby to provide coverage. This is where satellite imagery can help. The Sentinel-1 satellites use imaging techniques that are able to penetrate through clouds and can operate at night as they are their own lightsource. However, telling ships apart from icebergs is difficult as the images do not have colour and have low resolution. The current C-Core system used is the proprietary Iceberg Detection Software (IDS). As it is proprietary I was not able to find out how the existing software works, but there are many other examples of satellite-based iceberg detection in the literature  \cite{c-core,bentes}. 
+
+The radar takes two images, with different polarisations,  Horizontal-Horizontal(HH) and Horizontal-Vertical(HV). For HH the image is formed by transmitting light with a horizontal polarization and receiving light with a horizontal polarisation. For HV the light is transmitted with horizontal polarisation and received on vertical polarisation. The polarisation of light backscattered to the satellite depends on the material, polarisation of transmitted light and the angle of the reflecting surface. This imaging technique is referred to as dual-polarisation. Dual-polarisation has proven to improve the classification of ice Vs water, therefore I expect it will improve classification of iceberg vs ship \cite{radarsat-mode-selection,yu}. 
+
+I was interested in this project because of my previous experience with polarisation and satellite imagery from my Physics degree. I'm really interested in the application of satellites and am excited to see what can be achieved by combining machine learning with satellite technology. I think improvements to data analysis from satellites could be very valuable given the considerable investment involved to transport a satellite into space and our inability to upgrade existing satellite hardware once transported. This means that work to upgrade the software, to extract more value from these satellites is especially important.
+
+\subsection{Problem Statement}
+The problem to be solved is one of binary image classification. Does a given Sentinel-1 image contain an iceberg? The model that solves this problem must have a high accuracy in order to be trusted to handle the important task of guiding ships. The metric used for this is discussed in the Evaluation Metrics section. The problem is repeatable because there is constant shipping across the atlantic, with over 10 billion tonnes being shipped globally each year. \cite{unctad}
+
+\subsection{Metrics}
+The Kaggle competition measures the performance of a given model using log loss. As there are only two classifications for an image; has an iceberg or does not have an iceberg, the classification is binary and the log loss equation is simple. The log loss equation: \cite{logloss}
+\[ log loss = - \frac{1}{N} \sum_{i=1}^{N} y_{i1}\ln(p_{i1}) + y_{i2}\ln(p_{i2}) \]
+
+Where N is the number of images classified, $y_{i1}$ is 1 if image contains an iceberg and 0 otherwise, $y_{i2}$ is 0 if image contains an iceberg and 1 otherwise, $p_{i1}$ is the predicted probability of image i containing an iceberg, $p_{i2}$ is the predicted probability  of image i not containing an iceberg. 
+
+This equation sums the natural logarithms of the models output probabilities for incorrect predictions and divides by the total number of predictions. This means that the log loss is reduced by improving accuracy. A perfect model will have a log loss of 0. This is interesting as I would have expected the competition to have valued recall most, as a ship wrongly classified as an iceberg poses no danger to another ship, where as an iceberg wrongly classified as a ship could be extremely dangerous. For the purposes of this project I will use Kaggle's log loss equation as the main metric, however I will still measure recall as it will be an important metric in real world scenarios. 
+
+\section{II. Analysis}
+2-4 pages
+\subsection{Data Exploration}
+The dataset is provided in a JSON list with the following fields for each entry in the list:
+\begin{itemize}
+\item ID: The ID of the image
+\item band\_1: The flattened image data in a list. Images are 75x75 so the flattened list has 5625 elements. band\_1 is for the HH polarisation.
+\item band\_2: The same as band\_1 except this image is of the HV polarisation.
+\item inc\_angle: The incidence angle that the satellite was at when the images were taken. 133 of the images have NA for incidence angle so some preprocessing may be needed.
+\item is\_iceberg: This field only exists for the training set and indicates whether the object is an iceberg.
+\end{itemize}
+There are 1604 samples in the training set and 8424 in the test set. The test set includes some machine generated images to prevent hand scoring. 
+
+Each band provides an image of the object, interpretation of this data will form the main process of the classification model. It has been found that for the purposes of ice identification, using a single band rather than interpretting both, results in much poorer results \cite{radarsat-mode-selection,yu}. Therefore it is likely that the strongest models will use both bands for classification.
+
+The incidence angle describes the position of the satellite when the image was taken. The angle is defined as the angle between the the position of the satellite and the vector perpendicular to the receiving surface. i.e. if the incidence angle is $0^0$ then the satellite is directly overhead. The angle affects the backscattering behaviour of the target. The change in backscattering as angle changes is different on the different polarisations, therefore it is essential that the model takes this into account when interpretting the bands. For example: Larger incidence angles reduce backscattering from the ocean clutter and have increased the probability of iceberg detection for previous models \cite{radarsat-mode-selection}
+
+When exploring the data I found that 753 of the training images contain icebergs, which is 47\%. 
+
+133 of the training data had 'na' as it's incidence angle. This is approximately 8\% of the training data. The test data does not have 'na' for any incidence angles.  
+\subsection{Exploratory Visualisation}
+Here is an example image of icebergs vs ships. This image is not from the data set provided but is merely as an example.
+
+\includegraphics[scale=0.125]{ship-iceberg}
+
+\cite{kaggle}
+It is clear from this image why classification is potentially such a problem as it is difficult for a human to classify these images. The actual radar images are difficult to visualise because the range of signal strength within a band varies by a factor of $10^3^8$. The images shown below were generated using the following function.
+
+TODO NEED TO COME BACK TO THIS SECTION AND TRY THE VISULAISATION AGAIN AS THE IMAGES DON'T LOOK RIGHT. 
+\begin{lstlisting}{language=python}
+def showArrayImage(array):
+    flat_array = array.flatten()
+    new_array = np.asarray(map(lambda v: int(v - min(flat_array)), flat_array))
+    new_array = np.asarray(map(lambda v: 255*v/new_array.max(), new_array))
+
+    new_array.shape = (75,75)
+    arrayImage = Image.fromarray(new_array, mode='L')
+    arrayImage.show()
+    arrayImage.save('my_not_iceberg_band_2.png')
+    return
+\end{lstlisting}
+
+
+\includegraphics[scale=1]{my_iceberg_band_1}
+\includegraphics[scale=1]{my_iceberg_band_2}
+\includegraphics[scale=1]{my_not_iceberg_band_1}
+\includegraphics[scale=1]{my_not_iceberg_band_2}
+
+
+ 
+\subsection{Algorithms and Techniques}
+I will be using a convolutional neural network (CNN) to solve this problem. These have had success in other image classification problems and so I expect them to perform well here. The model will use the pre-trained VGG16 model with weights from imagenet. This is a 16 layer CNN trained on labelled images from the imagenet database. The structure of VGG16 is
+TODO GET STRUCTURE OF VGG16 MODEL AND CHECK HOW KERAS PRE-TRAINIGN WORKS
+
+I have a number of parameters that can be tuned to optmise the CNN:
+\begin{itemize}
+\item Image data generator - The preprocessing step of creating an image generator has several parameters that can be set. E.g. Horizontal flip, zoom range and rotation range
+\item Batch size - How many images should be processed through the CNN at a time
+\item Number of epochs - How many times should all the data be run through the network to train it. Increasing this may improve accuracy but adds training time
+\item Optimiser - Keras provides different standard optimisers to handle back propagation. E.g. Adam, rmsprop,  TODO CHECK THIS IS CORRECT
+\item Depth of fully connected layer - The fully connected layer is highly tunable as I can add or remove layers as required. The effect of this will depend on the layers added. E.g. adding a large dense layer may increase the training time but may also increase the maximu accuracy the model will converge to. 
+\item Layer parameters - There are several parameters that can be set for each layer. E.g. Dense layer can set the number of neurons, dropout can set the threshold TODO CHECK THE DROPOUT PARAMETER IS THRESHOLD
+\end{itemize}
+
+
+
+\subsection{Benchmark}
+At the time of writing the scores on the leaderboard show a top score log loss of 0.0958. To be realistic, I am not expecting my model to outperform this as the leaderboard will constantly improve and there may be several people collaborating in each Kaggle team. A more realistic benchmark would be the median of all the entries which has a log loss of 0.2128 \cite{kaggle}.
+The closest benchmark available outside of Kaggle are the results of the German Aerospace Center \cite{bentes} who performed ship-iceberg discrimination using high resolution images from the TerraSAR-X satellite. This achieved recall of 100\% of icebergs with an F1-score of 98\%. However this was using high resolution images on a different satellite so is not an exact equivalent. The lower resolution of the Sentinel-1 images means we can expect this project to have poorer results than the TerraSAR-X benchmark. 
+
+\section{III. Methodology}
+3-5 pages
+\subsection{Data Preprocessing}
+\subsection{Implementation}
+I will be using the keras library with tensorflow-gpu backend to build the CNN. The convolutional layers will be supplied by a transfer model based on weights from imagenet. Additional full connected layers follow this and will combine with the satellite's input angle to form the complete model. The function for creating the CNN using VGG16 as the transfer model is below:
+\begin{lstlisting}{language=python}
+def createCombinedModel():
+    angle_input = Input(shape=[1], name="angle_input")
+    angle_layer = Dense(1,)(angle_input)
+    
+    # Use a transfer model for the initial layers
+    transfer_model = VGG16(weights='imagenet', include_top=False, input_shape=x_train.shape[1:])
+    # Get the output of the last layer of transfer model. Will need to change this for each transfer model
+    transfer_output = transfer_model.get_layer('block5_pool').output
+    transfer_output = GlobalMaxPooling2D()(transfer_output)
+    #TODO fix issue where this gives something different to angle_layer and transfer_ouput, should be a tensor
+    combined_inputs = concatenate([transfer_output, angle_layer])
+    
+    combined_model = Dense(512, activation='relu', name="FirstFCDense")(combined_inputs)
+    combined_model = Dropout(0.3)(combined_model)
+    combined_model = Dense(512, activation='relu', name="SecondFCDense")(combined_model)
+    combined_model = Dropout(0.3)(combined_model)
+    predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
+    
+    model = Model(input=[transfer_model.input, angle_input], output =predictions)
+    model.compile(optimizer='rmsprop',loss='binary_crossentropy',metrics=['accuracy'])
+    return model
+\end{lstlisting}
+The function above is just one example of a possible model and will be tuned to improve performance. Tuning may include: adding additonal layers, widening existing layers, changing any of the parameters of the layers, changing the optimiser or changing the transfer model. 
+
+\subsection{Refinement}
+
+\section{IV. Results}
+2-3 pages
+\subsection{Model Evaluation and Validation}
+\subsection{Justification}
+
+\section{V. Conclusion}
+1-2pages
+\subsection{Free-Form Visualisation}
+\subsection{Reflection}
+\subsection{Improvement}
+
+
+
+\newpage{}
+\section{Project Proposal}
+\section{Domain Background}
+Icebergs present a significant danger to shipping, especially in adverse weather conditions. Identifying Icebergs and distinguishing them from ships is therefore vital for safe sea transport. This project aims to improve the detection of icebergs using satellite imagery. This project is based on the Statoil/C-CORE Iceberg Classifier Challenge, posed on kaggle.com \cite{kaggle}. To mitigate risks caused by icebergs, many operators use shore based techniques and aerial reconnaissance. However, in remote locations or during harsh weather conditions the icebergs may not be visible for aerial reconnaissance or there may not be an airfield nearby to provide coverage. This is where satellite imagery can help. The Sentinel-1 satellites use imaging techniques that are able to penetrate through clouds and can operate at night as they are their own lightsource. However, telling ships apart from icebergs is difficult as the images do not have colour and have low resolution. The current C-Core system used is the proprietary Iceberg Detection Software (IDS). As it is proprietary I was not able to find out how the existing software works, but there are many other examples of satellite-based iceberg detection in the literature  \cite{c-core,bentes}. 
+
+The radar takes two images, with different polarisations,  Horizontal-Horizontal(HH) and Horizontal-Vertical(HV). For HH the image is formed by transmitting light with a horizontal polarization and receiving light with a horizontal polarisation. For HV the light is transmitted with horizontal polarisation and received on vertical polarisation. The polarisation of light backscattered to the satellite depends on the material, polarisation of transmitted light and the angle of the reflecting surface. This imaging technique is referred to as dual-polarisation. Dual-polarisation has proven to improve the classification of ice Vs water, therefore I expect it will improve classification of iceberg vs ship \cite{radarsat-mode-selection,yu}. 
+
+I was interested in this project because of my previous experience with polarisation and satellite imagery from my Physics degree. I'm really interested in the application of satellites and am excited to see what can be achieved by combining machine learning with satellite technology. I think improvements to data analysis from satellites could be very valuable given the considerable investment involved to transport a satellite into space and our inability to upgrade existing satellite hardware once transported. This means that work to upgrade the software, to extract more value from these satellites is especially important.  
+
+
+
+\section{Problem Statement}
+The problem to be solved is one of binary image classification. Does a given Sentinel-1 image contain an iceberg? The model that solves this problem must have a high accuracy in order to be trusted to handle the important task of guiding ships. The metric used for this is discussed in the Evaluation Metrics section. The problem is repeatable because there is constant shipping across the atlantic, with over 10 billion tonnes being shipped globally each year. \cite{unctad}
+
+
+\section{Datasets and Inputs}
+The dataset is provided in a JSON list with the following fields for each entry in the list:
+\begin{itemize}
+\item ID: The ID of the image
+\item band\_1: The flattened image data in a list. Images are 75x75 so the flattened list has 5625 elements. band\_1 is for the HH polarisation.
+\item band\_2: The same as band\_1 except this image is of the HV polarisation.
+\item inc\_angle: The incidence angle that the satellite was at when the images were taken. 133 of the images have NA for incidence angle so some preprocessing may be needed.
+\item is\_iceberg: This field only exists for the training set and indicates whether the object is an iceberg.
+\end{itemize}
+There are 1604 samples in the training set and 8424 in the test set. The test set includes some machine generated images to prevent hand scoring. 
+
+Each band provides an image of the object, interpretation of this data will form the main process of the classification model. It has been found that for the purposes of ice identification, using a single band rather than interpretting both, results in much poorer results \cite{radarsat-mode-selection,yu}. Therefore it is likely that the strongest models will use both bands for classification.
+
+The incidence angle describes the position of the satellite when the image was taken. The angle is defined as the angle between the the position of the satellite and the vector perpendicular to the receiving surface. i.e. if the incidence angle is $0^0$ then the satellite is directly overhead. The angle affects the backscattering behaviour of the target. The change in backscattering as angle changes is different on the different polarisations, therefore it is essential that the model takes this into account when interpretting the bands. For example: Larger incidence angles reduce backscattering from the ocean clutter and have increased the probability of iceberg detection for previous models \cite{radarsat-mode-selection}
+
+
+\section{Solution Statement}
+I intend to use a convolutional neural network to solve this problem. As I do not have access to vast computing resources, will use transfer learning models. I will compare the performance of the VGG16, ResNet50 and Inception-ResNet V2 models. After measuring their initial performance I will commit to one model and tune it to improve performance. 
+
+In addition to the pre-train convolutions, I will need to pass the incidence angle to the fully connected layers. As the relationship between backscattering and incidence angle is trigonometric, I will take the sine of the angle. 
+
+In order to provide sufficient training time and computing resource, I will run the model on an AWS EC2 server. I will use a callback function to save the weights and structure of the model, so I can experiment without losing progress towards higher accuracy.
+
+\section{Benchmark model}
+At the time of writing the scores on the leaderboard show a top score log loss of 0.0958. To be realistic, I am not expecting my model to outperform this as the leaderboard will constantly improve and there may be several people collaborating in each Kaggle team. A more realistic benchmark would be the median of all the entries which has a log loss of 0.2128 \cite{kaggle}.
+The closest benchmark available outside of Kaggle are the results of the German Aerospace Center \cite{bentes} who performed ship-iceberg discrimination using high resolution images from the TerraSAR-X satellite. This achieved recall of 100\% of icebergs with an F1-score of 98\%. However this was using high resolution images on a different satellite so is not an exact equivalent. The lower resolution of the Sentinel-1 images means we can expect this project to have poorer results than the TerraSAR-X benchmark. 
+
+\section{Evaluation Metrics}
+The Kaggle competition measures the performance of a given model using log loss. As there are only two classifications for an image; has an iceberg or does not have an iceberg, the classification is binary and the log loss equation is simple. The log loss equation: \cite{logloss}
+\[ log loss = - \frac{1}{N} \sum_{i=1}^{N} y_{i1}\ln(p_{i1}) + y_{i2}\ln(p_{i2}) \]
+
+Where N is the number of images classified, $y_{i1}$ is 1 if image contains an iceberg and 0 otherwise, $y_{i2}$ is 0 if image contains an iceberg and 1 otherwise, $p_{i1}$ is the predicted probability of image i containing an iceberg, $p_{i2}$ is the predicted probability  of image i not containing an iceberg. 
+
+This equation sums the natural logarithms of the models output probabilities for incorrect predictions and divides by the total number of predictions. This means that the log loss is reduced by improving accuracy. A perfect model will have a log loss of 0. This is interesting as I would have expected the competition to have valued recall most, as a ship wrongly classified as an iceberg poses no danger to another ship, where as an iceberg wrongly classified as a ship could be extremely dangerous. For the purposes of this project I will use Kaggle's log loss equation as the main metric, however I will still measure recall as it will be an important metric in real world scenarios. 
+
+\section{Project Design}
+
+To start with the data will need to cleansed. Fortunately, as this is a Kaggle competition the data is mostly in a sanitized form. The notable exception is that there are 133 training data that have 'na' for their incidence angle. If there were more training data, I would consider deleting these data entirely, however with only 1604 images to train the model I will avoid throwing away 8\% of the data. To handle these, I will replace the 'na' with the average incidence angle. I expect the image data to be more important for classification than the angle data and so the data is still valuable as a way to train the neural network's interpretation of the images.
+
+Convolutional neural networks have proven effective in image classification problems \cite{deepcnn}. However, they can require long training times, which increase with width and depth of the neural network. The training time can be reduced by using transfer learning. 
+
+I will create a convolutional neural network, using VGG16 to help train it. For the fully connected layer I will start with a single hidden layer of 32 neurons as this proved effective when classifying dog breeds in a previous Udacity project. If that proves to be too simple then I will increase the depth and width of the hidden layers. Initially, I expect the accuracy to be very low and so I anticipate having to create a complex neural network. Later I intend to replace VGG16 with other transfered models, but I will not be able to measure the performance change if the accuracy of the model is already as low as guessing.  I will continue to increase the complexity of the hidden layers until the model reaches an accuracy that would allow me to distinguish between the performance of different transfer learning training models.
+
+Eventually I will experiment using different transfer-learning models. I will assess the performance of the model when trained using VGG16, ResNet50 and Inception-ResNet V2. Once I have compared the performance of these, I will choose one model and perform my final tuning on it. 
+
+In addition to the images, I will need to pass in the incidence angle to the hidden layers of the model. To do this I will need to create an image generator that includes the incidence angle as well as the image. I will also need to use keras' concatenation to add an additional input. The code snippet below shows how this can be done \cite{keras-layers}. 
+\begin{lstlisting}{language=python}
+#Create the input for the angles
+angles_input = Sequential()
+angles_input.add(Dense(1,input_shape=(1,),activation='sigmoid'))
+
+#create the vgg16 model to take in images as input 
+vgg16_model = ..... 
+
+combined_model = keras.layers.Concatenate([vgg16_model,angles_input])
+\end{lstlisting}
+
+
+This approach will allow the neural network to use data from the images as well as from the incidence angle, without requiring any manual intervention. 
+
+To estimate the log loss of the model, I will use 10-fold cross validation. 
+
+
+\bibliographystyle{abbrv}
+\bibliography{proposal}{}
+\end{document}

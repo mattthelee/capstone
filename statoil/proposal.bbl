@@ -1,0 +1,53 @@
+\begin{thebibliography}{1}
+
+\bibitem{bentes}
+C.~A. Bentes~da Silva, A.~Frost, D.~Velotto, and B.~Tings.
+\newblock Ship-iceberg discrimination with convolutional neural networks in
+  high resolution sar images.
+\newblock In {\em 11th European Conference on Synthetic Aperture Radar
+  Electronic Proceedings, 06-09 June, 2016, Hamburg, Germany}, pages 491--494.
+  VDE Verlag GmbH, 2016.
+
+\bibitem{c-core}
+C-Core.
+\newblock \url{ "https://www.c-core.ca/IcebergSurveillance"}.
+\newblock Accessed: 28/12/2017.
+
+\bibitem{radarsat-mode-selection}
+A.~et~al.
+\newblock Radarsat-2 mode selection for maritime surveillance.
+\newblock pages 38--70, 2011.
+
+\bibitem{kaggle}
+Kaggle.com.
+\newblock
+  \url{"https://www.kaggle.com/c/statoil-iceberg-classifier-challenge"}.
+\newblock Accessed: 23/12/2017.
+
+\bibitem{logloss}
+Kaggle.com.
+\newblock \url{"https://www.kaggle.com/wiki/LogLoss"}.
+\newblock Accessed: 23/12/2017.
+
+\bibitem{keras-layers}
+Keras.
+\newblock \url{"https://keras.io/layers/merge/"}.
+\newblock Accessed: 23/12/2017.
+
+\bibitem{deepcnn}
+K.~Simonyan and A.~Zisserman.
+\newblock Very deep convolutional networks for large-scale image recognition.
+\newblock {\em arXiv preprint arXiv:1409.1556}, 2014.
+
+\bibitem{unctad}
+UNCTAD.
+\newblock Review of marittime transport 2016.
+\newblock page~x, 2016.
+
+\bibitem{yu}
+P.~Yu, A.~K. Qin, and D.~A. Clausi.
+\newblock Feature extraction of dual-pol sar imagery for sea ice image
+  segmentation.
+\newblock {\em Canadian Journal of Remote Sensing}, 38(3):352--366, 2012.
+
+\end{thebibliography}
