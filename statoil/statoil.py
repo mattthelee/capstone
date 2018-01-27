@@ -21,6 +21,10 @@ from keras.models import Sequential, Model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.applications.vgg16 import VGG16
+from keras.applications.resnet50 import ResNet50
+from keras.applications.xception import Xception
+
+from keras.applications.inception_resnet_v2 import InceptionResNetV2
 from sklearn import model_selection
 from sklearn.preprocessing import normalize
 from PIL import Image
@@ -33,19 +37,20 @@ def createCombinedModel(optimiser):
     angle_layer = Dense(1,)(angle_input)
     
     # Use a transfer model for the initial layers
-    transfer_model = VGG16(weights='imagenet', include_top=False, input_shape=x_train.shape[1:])
+    
+    transfer_model = Xception(weights='imagenet', include_top=False, input_shape=x_train.shape[1:])
     # Get the output of the last layer of transfer model. Will need to change this for each transfer model
-    transfer_output = transfer_model.get_layer('block5_pool').output
+    transfer_output = transfer_model.get_layer('block14_sepconv2_act').output
     transfer_output = GlobalMaxPooling2D()(transfer_output)
     combined_inputs = concatenate([transfer_output, angle_layer])
     
-    combined_model = Dense(256, activation='relu', name="FirstFCDense")(combined_inputs)
+    combined_model = Dense(512, activation='relu', name="FirstFCDense")(combined_inputs)
     combined_model = Dropout(0.2)(combined_model)
-    combined_model = Dense(256, activation='relu', name="SecondFCDense")(combined_inputs)
+    combined_model = Dense(512, activation='relu', name="SeacondFCDense")(combined_inputs)
     predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
     
     model = Model(input=[transfer_model.input, angle_input], output =predictions)
-    model.compile(optimizer='adam',loss='binary_crossentropy',metrics=['accuracy'])
+    model.compile(optimizer=optimiser,loss='binary_crossentropy',metrics=['accuracy'])
     return model
     
 
