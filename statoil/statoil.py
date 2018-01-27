@@ -41,7 +41,7 @@ def createCombinedModel(optimiser):
     
     combined_model = Dense(256, activation='relu', name="FirstFCDense")(combined_inputs)
     combined_model = Dropout(0.2)(combined_model)
-    combined_model = Dense(256, activation='relu', name="SecondFCDense")(combined_inputs)
+    combined_model = Dense(256, activation='relu', name="SecondFCDense")(combined_model)
     predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
     
     model = Model(input=[transfer_model.input, angle_input], output =predictions)
