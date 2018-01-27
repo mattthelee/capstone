@@ -94,11 +94,10 @@ I have a number of parameters that can be tuned to optmise the CNN:
 \item Image data generator - The preprocessing step of creating an image generator has several parameters that can be set. E.g. Horizontal flip, zoom range and rotation range
 \item Batch size - How many images should be processed through the CNN at a time
 \item Number of epochs - How many times should all the data be run through the network to train it. Increasing this may improve accuracy but adds training time
-\item Optimiser - Keras provides different standard optimisers to handle back propagation. E.g. Adam, rmsprop,  TODO CHECK THIS IS CORRECT
+\item Optimiser - Keras provides different standard optimisers to handle back propagation. E.g. Adam, rmsprop, SGD. Each one also has its own tuning parameters.
 \item Depth of fully connected layer - The fully connected layer is highly tunable as I can add or remove layers as required. The effect of this will depend on the layers added. E.g. adding a large dense layer may increase the training time but may also increase the maximu accuracy the model will converge to. 
 \item Layer parameters - There are several parameters that can be set for each layer. E.g. Dense layer can set the number of neurons, dropout can set the threshold TODO CHECK THE DROPOUT PARAMETER IS THRESHOLD
 \end{itemize}
-
 
 
 \subsection{Benchmark}
@@ -136,7 +135,9 @@ def createCombinedModel():
 The function above is just one example of a possible model and will be tuned to improve performance. Tuning may include: adding additonal layers, widening existing layers, changing any of the parameters of the layers, changing the optimiser or changing the transfer model. 
 
 \subsection{Refinement}
+For my initial run of the model, I used a similar setup to the dog breed identification project, a CNN with a single 32 neuron fully connected layer, with VGG16 as the transfer model. This model failed to converge and had an accuracy of 53\% NEED TO DOUBLE CHECK THAT ACCURACY.
 
+For my next attempt I deepened and widened the fully connected layer to the maximum my computing resources could handle. A two layer, 512 wide fully connected layer. This still did not converge. I tried experimenting with different optimisers. After changing optimisers, the model began to converge. Therefore to achieve further refinement I performed gridsearch for different optimisers, in order to find the best one. 
 \section{IV. Results}
 2-3 pages
 \subsection{Model Evaluation and Validation}

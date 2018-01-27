@@ -19,46 +19,16 @@ from keras.layers import Dropout, Flatten, Dense, Input
 from keras.layers.merge import concatenate
 from keras.models import Sequential, Model
 from keras.preprocessing.image import ImageDataGenerator
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.applications.vgg16 import VGG16
 from sklearn import model_selection
 from sklearn.preprocessing import normalize
 from PIL import Image
+from keras.optimizers import SGD, Adam, RMSprop
 
 #import png
 
-
-def loadData(filepath):
-    with open(filepath) as Json:
-        data = pd.DataFrame(json.load(Json))
-    print "Data loaded from", filepath
-    return data
-
-def convertBand(band):
-    band_array = np.array(band)
-    band_array.shape = (75,75)
-    return np.asarray([band_array])
-
-def convertBands(band1,band2):
-    band1_array = np.array(band1)
-    band1_array.shape = (75,75)
-    
-    band2_array = np.array(band2)
-    band2_array.shape = (75,75)
-    return np.asarray([band1_array,band2_array])
-
-def convertToTensor(dataframe):
-    tensor = map(lambda a,b : convertBands(a,b), training_frame['band_1'], training_frame['band_2'])
-    return np.asarray(tensor)
-
-def createVGGModel():
-    anglesInput = Input(shape=[1], name ="angles")
-    angles_layer = Dense(1,)(anglesInput)
-    
-    transferred_model = VGG16(weights='imagenet')
-
-
-def createCombinedModel():
+def createCombinedModel(optimiser):
     angle_input = Input(shape=[1], name="angle_input")
     angle_layer = Dense(1,)(angle_input)
     
@@ -67,38 +37,17 @@ def createCombinedModel():
     # Get the output of the last layer of transfer model. Will need to change this for each transfer model
     transfer_output = transfer_model.get_layer('block5_pool').output
     transfer_output = GlobalMaxPooling2D()(transfer_output)
-    #TODO fix issue where this gives something different to angle_layer and transfer_ouput, should be a tensor
     combined_inputs = concatenate([transfer_output, angle_layer])
     
-    combined_model = Dense(512, activation='relu', name="FirstFCDense")(combined_inputs)
-    combined_model = Dropout(0.3)(combined_model)
-    combined_model = Dense(512, activation='relu', name="SecondFCDense")(combined_model)
-    combined_model = Dropout(0.3)(combined_model)
+    combined_model = Dense(256, activation='relu', name="FirstFCDense")(combined_inputs)
+    combined_model = Dropout(0.2)(combined_model)
+    combined_model = Dense(256, activation='relu', name="SecondFCDense")(combined_inputs)
     predictions = Dense(1, activation='sigmoid',name="OutputDense")(combined_model)
     
     model = Model(input=[transfer_model.input, angle_input], output =predictions)
-    model.compile(optimizer='rmsprop',loss='binary_crossentropy',metrics=['accuracy'])
+    model.compile(optimizer='adam',loss='binary_crossentropy',metrics=['accuracy'])
     return model
     
-def createModel():
-    
-    cnnModel = Sequential()
-    #If doing stuff with single channel
-    #cnnModel.add(Conv2D(64,(3,3), strides=2, input_shape=(1,75,75), data_format='channels_first'))
-    cnnModel.add(Conv2D(64,(3,3), strides=2, input_shape=(2,75,75), data_format='channels_first'))
-    cnnModel.add(Conv2D(32,(2,2),data_format='channels_first'))
-    cnnModel.add(MaxPooling2D(pool_size=(2,2),data_format='channels_first'))
-    cnnModel.add(Flatten())
-    cnnModel.add(Dense(64,activation='relu'))
-    cnnModel.add(Dense(2, activation='sigmoid')) 
-    
-    cnnModel.summary()
-    cnnModel.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
-    return cnnModel
-
-def runModel(channelled_bands, y_train):
-    cnnModel = createModel()
-    return cnnModel.fit(channelled_bands,y_train, epochs=10, batch_size=20)
 
 def showArrayImage(array):
     flat_array = array.flatten()
@@ -124,28 +73,14 @@ def showListImage(theList):
     listImage.show()    
     return
 
-def theirconvert(training_frame):
-    X_band_1=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_1"]])
-    X_band_2=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_2"]])
-    X_band_3=(X_band_1+X_band_2)/2
-    X_train = np.concatenate([X_band_1[:, :, :, np.newaxis]
-                          , X_band_2[:, :, :, np.newaxis]
-                         , X_band_3[:, :, :, np.newaxis]], axis=-1)
-    return X_train
-
-def createband3(band1,band2,angle):
-    band3 = (band1 + band2)/2
-    return band3
-
 def frameToImagesTensor(training_frame):
-    X_band_1=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_1"]])
-    X_band_2=np.array([np.array(band).astype(np.float32).reshape(75, 75) for band in training_frame["band_2"]])
-    X_band_3=(X_band_1+X_band_2)/2
-    #X_band_3 = map(lambda band1, band2: createband3(band1,band2), X_band_1,X_band_2)
-    X_train = np.concatenate([X_band_1[:, :, :, np.newaxis]
-                          , X_band_2[:, :, :, np.newaxis]
-                         , X_band_3[:, :, :, np.newaxis]], axis=-1)
-    return X_train
+    band1 = np.asarray(map(lambda band: np.array(band).reshape(75,75),training_frame['band_1']))
+    band2 = np.asarray(map(lambda band: np.array(band).reshape(75,75),training_frame['band_2']))
+    # I take an average for the third band as the colour map was in the competiton description and looked useful
+    band3 = (band1 + band2)/2
+    # I want the structure of my tensor to have th echannels last as that is the default setting of keras image library
+    channel_last_tensor = np.stack((band1,band2,band3),axis=3)
+    return channel_last_tensor
 
 def gen_flow_for_two_inputs(x,angle_factor,y, batch_size):
     # This function is used because the NN will only take a generator as an input
@@ -204,8 +139,14 @@ testing_flow = gen.flow(x_test)
 my_model = createModel()
 my_model.fit_generator(training_flow,steps_per_epoch=24,epochs= 150)
 '''
+
+mysgd = SGD(0.01,0.5,0.0001,True)
+myrmsprop = ""
+modelname = ""
+parametersname = ""
+optimiser = "adam"
 #setup constants
-best_model_filepath = "models/bestmodel.hdf5"
+best_model_filepath = "models/best%s-%s-%s-{val_acc:.2f}-{val_loss:.2f}.hdf5" % (optimiser,parametersname,modelname)
 checkpointer = ModelCheckpoint(best_model_filepath,verbose=1, save_best_only= True)
 es = EarlyStopping('val_loss', patience=10, mode="min")
 
@@ -215,7 +156,7 @@ folds = model_selection.StratifiedKFold(n_splits=k, shuffle=True).split(x_train,
 
 folds_array = []
 batch_size = 32
-epoch_num = 150
+epoch_num = 100
 for i in range(k):
     fold = folds.next()
     cv_training_indexes = fold[0]
@@ -232,11 +173,11 @@ for i in range(k):
     
     cv_gen_test_flow = gen_flow_for_two_inputs(cv_x_testing_samples,cv_test_angle_factor,cv_y_testing_samples,batch_size)
     cv_gen_train_flow = gen_flow_for_two_inputs(cv_x_training_samples,cv_train_angle_factor,cv_y_training_samples,batch_size)
-    model = createCombinedModel()
+    model = createCombinedModel(optimiser)
     model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer,es], validation_data = cv_gen_test_flow,validation_steps=len(cv_test_angle_factor), verbose =1)
 
 
-model = createCombinedModel()
+model = createCombinedModel(optimiser)
 model.load_weights(best_model_filepath)
 print "training score"
 gen_train_flow = gen_flow_for_two_inputs(x_train,angle_factor,y_train,batch_size)
