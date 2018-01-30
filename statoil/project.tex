@@ -61,32 +61,39 @@ Here is an example image of icebergs vs ships. This image is not from the data s
 \includegraphics[scale=0.125]{ship-iceberg}
 
 \cite{kaggle}
-It is clear from this image why classification is potentially such a problem as it is difficult for a human to classify these images. The actual radar images are difficult to visualise because the range of signal strength within a band varies by a factor of $10^3^8$. The images shown below were generated using the following function.
+It is clear from this image why classification is potentially such a problem as it is difficult for a human to classify these images. 
 
-TODO NEED TO COME BACK TO THIS SECTION AND TRY THE VISULAISATION AGAIN AS THE IMAGES DON'T LOOK RIGHT. 
+The actual radar images are difficult to visualise because the range of signal strength within a band varies by a factor of $10^{38}$. Therefore, before visualising, the images had to be standardised using z-score. The z-score is calculated in the function below TODO CITE WEBSITE:
 \begin{lstlisting}{language=python}
-def showArrayImage(array):
-    flat_array = array.flatten()
-    new_array = np.asarray(map(lambda v: int(v - min(flat_array)), flat_array))
-    new_array = np.asarray(map(lambda v: 255*v/new_array.max(), new_array))
+def z_score(image_list):
+    standardised_image_array = (np.array(image_list) -np.mean(image_list)) / np.std(image_list)
+    return standardised_image_array.tolist()
+\end{lstlisting}
 
-    new_array.shape = (75,75)
-    arrayImage = Image.fromarray(new_array, mode='L')
-    arrayImage.show()
-    arrayImage.save('my_not_iceberg_band_2.png')
+The images shown below were generated using the following function.
+\begin{lstlisting}{language=python}
+def plotImage(standardised_list):
+    standardised_image = np.array(standardised_list).reshape(75,75)
+    plt.imshow(standardised_image)
     return
 \end{lstlisting}
 
+The three images below show the band1, band2 and band3 (average of band1/2) for an iceberg image.
 
-\includegraphics[scale=1]{my_iceberg_band_1}
-\includegraphics[scale=1]{my_iceberg_band_2}
-\includegraphics[scale=1]{my_not_iceberg_band_1}
-\includegraphics[scale=1]{my_not_iceberg_band_2}
+\includegraphics[scale=0.33]{heatmap-iceberg-band-1}
+\includegraphics[scale=0.33]{heatmap-iceberg-band-2}
+\includegraphics[scale=0.33]{heatmap-iceberg-band3-avg}
+
+The three images below show the band1, band2 and band3 (average of band1/2) for a ship image.
+
+\includegraphics[scale=0.33]{heatmap-ship-band-1}
+\includegraphics[scale=0.33]{heatmap-ship-band-2}
+\includegraphics[scale=0.33]{heatmap-ship-band3-avg}
 
 
  
 \subsection{Algorithms and Techniques}
-I will be using a convolutional neural network (CNN) to solve this problem. These have had success in other image classification problems and so I expect them to perform well here. The model will use the pre-trained VGG16 model with weights from imagenet. This is a 16 layer CNN trained on labelled images from the imagenet database. By using the VGG16 pre-trained model to extract features from the images, I have been able to greatly reduce the training time of my own CNN. I had initally hoped to experiment with the ResNet50 and InceptionResNetV2 pretrained models as well. However, these models have a minimum image size of 197x197 and 139x139. As my data is 75x75 images, I could not use them. Instead I used the Xception model, which is also available as a Keras pre-trained model and accepts images of minimum size 71x71 \citep{keras-layers}. 
+I will be using a convolutional neural network (CNN) to solve this problem. These have had success in other image classification problems and so I expect them to perform well here. The model will use the pre-trained VGG16 model with weights from imagenet. This is a 16 layer CNN trained on labelled images from the imagenet database. By using the VGG16 pre-trained model to extract features from the images, I have been able to greatly reduce the training time of my own CNN. I had initally hoped to experiment with the ResNet50 and InceptionResNetV2 pretrained models as well. However, these models have a minimum image size of 197x197 and 139x139. As my data is 75x75 images, I could not use them. Instead I used the Xception model, which is also available as a Keras pre-trained model and accepts images of minimum size 71x71 \cite{keras-layers}. 
 
 I have a number of parameters that can be tuned to optmise the CNN:
 \begin{itemize}
@@ -113,19 +120,39 @@ training_frame['inc_angle'] = training_frame['inc_angle'].replace('na',avg_angle
 
 Further image preprocessing was done by using an image data generator. An image data generator creates additional images for the training set, by adding altered images to the set. For example, the image generator could take a set of images and rotate every image by 90 degrees clockwise. Thsi would double the training images for the model without including invalid date. They should be used with caution as some alterations invalidate the date, e.g. flipping an image of text would mean the model could incorrectly classify the backwards letters. The imagedatagenerator used in this project is detailed in the Refinement subection below.
 
-Finally, the images had to be organised into a format that is readable by the keras library. This means it has to be organised into a tensor. The following function performed this task:
+The images had to be organised into a format that is readable by the keras library. This means it has to be organised into a tensor. The following function performed this task:
 \begin{lstlisting}{language=python}
 def frameToImagesTensor(training_frame):
-    band1 = np.asarray(map(lambda band: np.array(band).reshape(75,75),training_frame['band_1']))
-    band2 = np.asarray(map(lambda band: np.array(band).reshape(75,75),training_frame['band_2']))
-    # I take an average for the third band as the colour map was in the competiton description
+    # Use z-score to standardise the image data
+    standard_frame1 = training_frame['band_1'].apply(z_score)
+    standard_frame2 = training_frame['band_2'].apply(z_score)
+
+    band1 = np.asarray(map(lambda band: np.array(band).reshape(75,75),standard_frame1))
+    band2 = np.asarray(map(lambda band: np.array(band).reshape(75,75),standard_frame2))
+    
     band3 = (band1 + band2)/2
-    # I want the structure of my tensor to have the channels last as that is the default setting of keras library
     channel_last_tensor = np.stack((band1,band2,band3),axis=3)
     return channel_last_tensor
 \end{lstlisting}
 This function output a tensor with the channels last, which is the default method for keras. It also created a third band which was an average of the first two. This colourmap was shown inthe competition description and made identification by sight between an iceberg and a ship easier. Therefore I expect it will assist the neural network as well. 
-	
+
+Finally the data had to be prepared in a way to submit to the model. As the model injects the incidence angle as an input part way through, the generator required special construction to allow the model to read the incidence angle. To solve this problem I used the approach used by one Kaggle kernel that manually created the generator rather than using the keras library, as seen in the following function. 
+\begin{lstlisting}{language=python}
+
+def gen_flow_for_two_inputs(x,angle_factor,y, batch_size):
+    gen = ImageDataGenerator(horizontal_flip = True,
+    	vertical_flip = True,
+    	zoom_range = 0.2,
+    	rotation_range = 360)
+    gen_x = gen.flow(x,y,batch_size=batch_size,seed=0)
+    gen_angle =  gen.flow(x,angle_factor,batch_size=batch_size, seed=0)
+    while True:
+        x1i = gen_x.next()
+        x2i = gen_angle.next()
+        yield [x1i[0], x2i[1]], x1i[1]
+\end{lstlisting}
+The function creates two generators and then yields the relevant outputs of them. This means the function returns a generator that can be used to input data into the model. 
+
 
 \subsection{Implementation}
 I will be using the keras library with tensorflow-gpu backend to build the CNN. The convolutional layers will be supplied by a transfer model based on weights from imagenet. Additional full connected layers follow this and will combine with the satellite's input angle to form the complete model. The function for creating the CNN using VGG16 as the transfer model is below:
@@ -139,7 +166,6 @@ def createCombinedModel():
     # Get the output of the last layer of transfer model. Will need to change this for each transfer model
     transfer_output = transfer_model.get_layer('block5_pool').output
     transfer_output = GlobalMaxPooling2D()(transfer_output)
-    #TODO fix issue where this gives something different to angle_layer and transfer_ouput, should be a tensor
     combined_inputs = concatenate([transfer_output, angle_layer])
     
     combined_model = Dense(512, activation='relu', name="FirstFCDense")(combined_inputs)
@@ -151,19 +177,21 @@ def createCombinedModel():
     model.compile(optimizer='adam',loss='binary_crossentropy',metrics=['accuracy'])
     return model
 \end{lstlisting}
-The function above was tuned to reach this configuration, the optimisers were varied and the model structure was changed, as described in the Refinement subsection. 
+The function above was tuned to reach this configuration, the optimisers were varied and the model structure was changed, as described in the Refinement subsection. The incidence angle is added into the model after the transfer model. This injection of another input meant It was not possible to use a Keras sequential to add layers. Therefore the keras model API was used instead. 
 \subsection{Refinement}
-See the Algorithms and Techniques section for the list of tunable parameters. There are a large number of tunable parameters here, too many for me to try all possible combinations. During refinement I chose to vary only a subset of possible parameters. I set the ImageDataGenerator, the batch_size and number of epochs for my intial model and found they provided a functional model and therefore did not vary these.  
-I have set the image generator to be
+See the Algorithms and Techniques section for the list of tunable parameters. There are a large number of tunable parameters here, too many for me to try all possible combinations. During refinement I chose to vary only a subset of possible parameters. I set the ImageDataGenerator, the batch size and number of epochs for my intial model and found they provided a functional model and therefore did not vary these.  
+I have set the image generator to be:
+
 \begin{lstlisting}{language=python}
 ImageDataGenerator(horizontal_flip = True,
-                         vertical_flip = True,
-                         zoom_range = 0.2,
-                         rotation_range = 360)
+	vertical_flip = True,
+	zoom_range = 0.2,
+	rotation_range = 360)
 \end{lstlisting}
+
 This allows for horizontal and vertical flips, because icebergs and ships will not look significantly different if their image is flipped. Zoom range of 0.2 as the size will be an important feature by small size changes are unimportant. Rotation range is 360 degrees as the images should be classified the same way, no matter their rotation. 
 
-Batch_size = 32 - this allowed for reasonable performance without preventing learning. 
+Batch size = 32 - this allowed for reasonable performance without preventing learning. 
 Number of epochs = 100 - this was reached after some intial models took nearly 100 epochs to converge to their best accuracy.
 
 The optimiser did require some tuning. I intially used the RMSprop optimiser as I had used it for previous image classifcation problems. It is also capable of reducing the learning rate over time, but improves upon the Adagrad algorithm by considering only a subset of previous gradients \cite{ruder2016overview}. However, the RMSprop optmiser did not allow the algorithm to converge. I then tried using sgd as it was an algorithm I was more familiar with. I tried tuning the SGD by changing the momentum and setting nesterov to true, however teh model still did not converge. Finally, I used Adam. There is scope for future work to tune the Adam settings or try other optimisers with non-default tuning, however that was beyond the scope of this project. Adam is an advanced algorithm, capable of making use of momentum and adjusting the learning rate of the model overtime. \cite{ruder2016overview}
@@ -175,15 +203,26 @@ The final structure chosen was a Dense layer, a dropout layer and another dense 
 \section{IV. Results}
 2-3 pages
 \subsection{Model Evaluation and Validation}
-The final models used a 
-\subsection{Justification}
+The final model was chosen after experimenting with different optimisers, fully connected layer depths and widths. The final assessment was made by comparing the performance of the Xception transfer model and the VGG16 model. The VGG16 achieved a maximum accuracy of INSERT ACCURACY HERE
+	
+	
+The model was trained using data that had perturbations added by the image data generator. This should ensure the model is able to handle changes to the data. The model is not expected to perform classification beyond sentinel-1 satellite data and therefore is not required to be very robust to new data sources. However, the model could be adapted to handle data from the TerraSAR-x satellites if some alterations were made to the pre-processing steps to allow classification of larger images. Use of the TerraSAR-x data would also allow for experimentation with other transfer learning models, which may perform better on the higher resolution images. 
 
+\subsection{Justification}
+The average 
 \section{V. Conclusion}
 1-2pages
 \subsection{Free-Form Visualisation}
-\subsection{Reflection}
-\subsection{Improvement}
 
+COULD DO A VISUALISATION OF THE ACCURACY OF THE MODELS AND THEIR VALIDATION ACCURACY OVER EPOCH, COMMENT ON OVERFITTING AND ON TRAINING TIME
+\subsection{Reflection}
+I learned a great deal from this project by experimenting with and reading about keras optimisers. Although the final optimiser was using the default settings for the Adam optimiser, I experimented with others and attempted tuning of them. Initially none of my modles converged, which was a source of some frustration as it was difficult to identify the root cause. Although this was the hardest part of the project, it was also the one that taught me the most and was therefore the most enjoyable. In future I will be prepared to tune my optimisers and discuss best optimisation strategies. 
+
+Another difficulty of the project was the lack of available information on the data. The competition organisers were not answering community questions, and therefore finding additonal information such as the scanning mode used by the satellites, was difficult. 
+
+The final results are promising but given the problem is one of safety, anything less than 100\% accuracy could result in danger to shipping crews. This project did not achieve the log loss scores of other models and therfore requires more development 
+\subsection{Improvement}
+Currently this model is highly specialised to handle the cross-polarisation data from the sentinel-1 satellites. In order to make use of more data and to generalise the usage of the model, it could be adapted to handle data from other sea-ice monitoring satellites, such as TerraSAR-x or RADARSAT. This would greatly increase the value of the model and would allow it to train on more data, which might improve accuracy. 
 
 
 \newpage{}

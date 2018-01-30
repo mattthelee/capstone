@@ -23,13 +23,13 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.applications.vgg16 import VGG16
 from keras.applications.resnet50 import ResNet50
 from keras.applications.xception import Xception
-
+from matplotlib import pyplot as plt
 from keras.applications.inception_resnet_v2 import InceptionResNetV2
 from sklearn import model_selection
 from sklearn.preprocessing import normalize
 from PIL import Image
 from keras.optimizers import SGD, Adam, RMSprop
-
+from sklearn.metrics import log_loss
 #import png
 
 def createCombinedModel(optimiser):
@@ -53,7 +53,15 @@ def createCombinedModel(optimiser):
     model.compile(optimizer=optimiser,loss='binary_crossentropy',metrics=['accuracy'])
     return model
     
+def z_score(image_list):
+    standardised_image_array = (np.array(image_list) -np.mean(image_list)) / np.std(image_list)
+    return standardised_image_array.tolist()
 
+def plotImage(standardised_list):
+    standardised_image = np.array(standardised_list).reshape(75,75)
+    plt.imshow(standardised_image)
+    return
+    
 def showArrayImage(array):
     flat_array = array.flatten()
     new_array = np.asarray(map(lambda v: int(v - min(flat_array)), flat_array))
@@ -79,8 +87,12 @@ def showListImage(theList):
     return
 
 def frameToImagesTensor(training_frame):
-    band1 = np.asarray(map(lambda band: np.array(band).reshape(75,75),training_frame['band_1']))
-    band2 = np.asarray(map(lambda band: np.array(band).reshape(75,75),training_frame['band_2']))
+    # Use z-score to standardise the image data
+    standard_frame1 = training_frame['band_1'].apply(z_score)
+    standard_frame2 = training_frame['band_2'].apply(z_score)
+
+    band1 = np.asarray(map(lambda band: np.array(band).reshape(75,75),standard_frame1))
+    band2 = np.asarray(map(lambda band: np.array(band).reshape(75,75),standard_frame2))
     # I take an average for the third band as the colour map was in the competiton description and looked useful
     band3 = (band1 + band2)/2
     # I want the structure of my tensor to have th echannels last as that is the default setting of keras image library
@@ -103,11 +115,10 @@ def gen_flow_for_two_inputs(x,angle_factor,y, batch_size):
         x1i = gen_x.next()
         x2i = gen_angle.next()
         yield [x1i[0], x2i[1]], x1i[1]
-
-
+    
 
 training_frame = pd.read_json("data/processed/train.json")
-testing_frame = pd.read_json("data/processed/test.json")
+#testing_frame = pd.read_json("data/processed/test.json")
 y_train = training_frame['is_iceberg']
 
 avg_angle = np.mean(filter(lambda x: x != 'na' ,training_frame['inc_angle']))
@@ -131,7 +142,7 @@ angle_factor = [ np.sin(angle*np.pi/180.0) for angle in training_frame['inc_angl
 # Als0 need to check that having it as a channel isn't just something done for different colours as the polarization is a bit different
 
 x_train = frameToImagesTensor(training_frame)
-x_test = frameToImagesTensor(testing_frame)
+#x_test = frameToImagesTensor(testing_frame)
 '''
 gen = ImageDataGenerator(horizontal_flip = True,
                          vertical_flip = True,
@@ -151,7 +162,8 @@ modelname = ""
 parametersname = ""
 optimiser = "adam"
 #setup constants
-best_model_filepath = "models/best%s-%s-%s-{val_acc:.2f}-{val_loss:.2f}.hdf5" % (optimiser,parametersname,modelname)
+#best_model_filepath = "models/best%s-%s-%s-{val_acc:.2f}-{val_loss:.2f}.hdf5" % (optimiser,parametersname,modelname)
+best_model_filepath = "models/final_best_model"
 checkpointer = ModelCheckpoint(best_model_filepath,verbose=1, save_best_only= True)
 es = EarlyStopping('val_loss', patience=10, mode="min")
 
@@ -162,11 +174,13 @@ folds = model_selection.StratifiedKFold(n_splits=k, shuffle=True).split(x_train,
 folds_array = []
 batch_size = 32
 epoch_num = 100
+total_train_log_loss = 0
+total_test_log_loss = 0
 for i in range(k):
     fold = folds.next()
     cv_training_indexes = fold[0]
     cv_testing_indexes = fold[1]
-   
+    print ("Starting fold")
     cv_x_training_samples = np.array([x_train[index] for index in cv_training_indexes])
     cv_y_training_samples = np.array([y_train[index] for index in cv_training_indexes])
    
@@ -180,15 +194,23 @@ for i in range(k):
     cv_gen_train_flow = gen_flow_for_two_inputs(cv_x_training_samples,cv_train_angle_factor,cv_y_training_samples,batch_size)
     model = createCombinedModel(optimiser)
     model.fit_generator(cv_gen_train_flow,steps_per_epoch=32, epochs=epoch_num, callbacks= [checkpointer,es], validation_data = cv_gen_test_flow,validation_steps=len(cv_test_angle_factor), verbose =1)
+    
+    
+    model = createCombinedModel(optimiser)
+    model.load_weights(best_model_filepath)
+    test_pred = model.predict([cv_x_testing_samples,cv_test_angle_factor])
+    test_log_loss = log_loss(cv_y_testing_samples,np.asarray(test_pred),0.0000001)
+    
+    train_pred = model.predict([cv_x_training_samples,cv_train_angle_factor])
+    train_log_loss = log_loss(cv_y_training_samples,np.asarray(train_pred),0.0000001)
+    total_train_log_loss += train_log_loss
+    total_test_log_loss += test_log_loss
+    print "Avg log loss: Test %03d,  Train:%03d" % (train_log_loss,test_log_loss)
 
+avg_test_log_loss = total_test_log_loss/k
+avg_train_log_loss = total_train_log_loss/k
 
-model = createCombinedModel(optimiser)
-model.load_weights(best_model_filepath)
-print "training score"
-gen_train_flow = gen_flow_for_two_inputs(x_train,angle_factor,y_train,batch_size)
-
-train_result = model.evaluate_generator(gen_train_flow)
-print train_result
+print "Avg log loss: Test %03d,  Train:%03d" % (avg_test_log_loss,avg_train_log_loss)
 
 #immediate steps
 # try different optimiser, e.g. adam optimiser
